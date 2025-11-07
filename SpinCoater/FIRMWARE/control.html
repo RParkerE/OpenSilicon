@@ -1,0 +1,591 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Spin Coater Controller</title>
+
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+    
+        body {
+            font-family: "Inter", "Segoe UI", Roboto, sans-serif;
+            background-color: #e6e9ed;
+            color: #1a1a1a;
+            min-height: 100vh;
+            padding: 30px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+    
+        .container {
+            background: #f7f8f9;
+            border-radius: 8px;
+            border: 1px solid #d1d5db;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
+            max-width: 960px;
+            width: 100%;
+            padding: 32px;
+        }
+    
+        h1 {
+            font-size: 1.75em;
+            font-weight: 600;
+            margin-bottom: 6px;
+            color: #1f2937;
+        }
+    
+        .subtitle {
+            color: #6b7280;
+            font-size: 0.9em;
+            margin-bottom: 25px;
+        }
+    
+        .connection-bar {
+            background: #f0f1f3;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            padding: 12px 16px;
+            margin-bottom: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+        }
+    
+        .connection-status {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 0.9em;
+        }
+    
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #a0a0a0;
+        }
+    
+        .status-dot.connected {
+            background: #4caf50;
+        }
+    
+        .ip-input {
+            flex: 1;
+            padding: 8px 10px;
+            border: 1px solid #cbd5e1;
+            border-radius: 4px;
+            font-size: 14px;
+            background: white;
+        }
+    
+        .btn {
+            padding: 8px 18px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: background 0.2s;
+            font-size: 14px;
+        }
+    
+        .btn-connect {
+            background: #1e3a8a;
+            color: white;
+        }
+    
+        .btn-connect:hover {
+            background: #1a3174;
+        }
+    
+        .main-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+    
+        @media (max-width: 768px) {
+            .main-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    
+        .panel {
+            background: #ffffff;
+            border-radius: 6px;
+            border: 1px solid #d1d5db;
+            padding: 20px;
+        }
+    
+        .panel h2 {
+            color: #1f2937;
+            margin-bottom: 16px;
+            font-size: 1.1em;
+            border-bottom: 1px solid #d1d5db;
+            padding-bottom: 6px;
+            font-weight: 600;
+        }
+    
+        .input-group {
+            margin-bottom: 12px;
+        }
+    
+        .input-group label {
+            display: block;
+            color: #374151;
+            margin-bottom: 4px;
+            font-size: 0.85em;
+            font-weight: 500;
+        }
+    
+        .input-group input {
+            width: 100%;
+            padding: 8px 10px;
+            border: 1px solid #cbd5e1;
+            border-radius: 4px;
+            font-size: 14px;
+            background: #fafafa;
+            font-family: "Roboto Mono", monospace;
+        }
+    
+        .input-group input:focus {
+            outline: none;
+            border-color: #2563eb;
+            background: #fff;
+        }
+    
+        .btn-update {
+            width: 100%;
+            background: #1e3a8a;
+            color: white;
+            padding: 10px;
+            margin-top: 10px;
+        }
+    
+        .btn-update:hover {
+            background: #1a3174;
+        }
+    
+        .btn-update:disabled {
+            background: #b0b0b0;
+            cursor: not-allowed;
+        }
+    
+        .status-display {
+            display: grid;
+            gap: 10px;
+        }
+    
+        .status-item {
+            background: #f9fafb;
+            padding: 12px;
+            border-radius: 4px;
+            border-left: 3px solid #1e3a8a;
+        }
+    
+        .status-item label {
+            color: #6b7280;
+            font-size: 0.8em;
+            display: block;
+            margin-bottom: 4px;
+        }
+    
+        .status-item .value {
+            color: #111827;
+            font-size: 1.3em;
+            font-family: "Roboto Mono", monospace;
+            font-weight: 600;
+        }
+    
+        .stage-indicator {
+            background: #f9fafb;
+            padding: 15px;
+            border-radius: 4px;
+            text-align: center;
+            border: 1px solid #d1d5db;
+        }
+    
+        .stage-indicator .stage-name {
+            font-size: 1.3em;
+            font-weight: 700;
+            color: #1e3a8a;
+            margin-bottom: 8px;
+        }
+    
+        .stage-step {
+            padding: 4px 8px;
+            border-radius: 3px;
+            background: #e5e7eb;
+            display: inline-block;
+            font-size: 0.8em;
+            margin: 0 3px;
+        }
+    
+        .stage-step.active {
+            background: #1e3a8a;
+            color: white;
+        }
+    
+        .control-buttons {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-top: 10px;
+        }
+
+        .control-panel {
+            grid-column: 1 / -1;
+        }
+    
+        .btn-start {
+            background: #15803d;
+            color: white;
+            padding: 14px;
+            font-size: 1.1em;
+        }
+    
+        .btn-start:hover {
+            background: #136634;
+        }
+    
+        .btn-stop {
+            background: #b91c1c;
+            color: white;
+            padding: 14px;
+            font-size: 1.1em;
+        }
+    
+        .btn-stop:hover {
+            background: #991b1b;
+        }
+    
+        .rpm-gauge {
+            background: #ffffff;
+            border-radius: 6px;
+            padding: 16px;
+            text-align: center;
+            border: 1px solid #d1d5db;
+        }
+    
+        .rpm-value {
+            font-size: 2.8em;
+            font-family: "Roboto Mono", monospace;
+            font-weight: 700;
+            color: #1e3a8a;
+        }
+    
+        .rpm-label {
+            color: #6b7280;
+            font-size: 0.85em;
+            margin-top: 4px;
+        }  
+    </style>    
+</head>
+<body>
+    <div class="container">
+        <h1>Spin Coater Controller</h1>
+        <p class="subtitle">Automated Resist Dispenser & Spin Coating System</p>
+
+        <div class="connection-bar">
+            <div class="connection-status">
+                <div class="status-dot" id="statusDot"></div>
+                <span id="connectionText">Disconnected</span>
+            </div>
+            <input type="text"
+                   class="ip-input"
+                   id="ipAddress"
+                   placeholder="ESP32 IP Address"
+                   value="192.168.0.1">
+            <button class="btn btn-connect" id="connectBtn" onclick="toggleConnection()">Connect</button>
+        </div>
+
+        <div class="main-grid">
+            <div class="panel">
+                <h2>Settings</h2>
+                <div class="input-group">
+                    <label for="zHeight">Z-Axis Height (mm)</label>
+                    <input type="number" id="zHeight" min="0" max="300" step="1" value="50">
+                    <small>Range: 0 - 300 mm</small>
+                </div>
+
+                <div class="input-group">
+                    <label for="dispenseVol">Dispense Volume (µL)</label>
+                    <input type="number" id="dispenseVol" min="25" max="1000" step="25" value="25">
+                    <small>Range: 25 - 1000 µL</small>
+                </div>
+
+                <div class="input-group">
+                    <label for="targetRPM">Target RPM</label>
+                    <input type="number" id="targetRPM" min="300" max="8000" step="100" value="3000">
+                    <small>Range: 300 - 8000 RPM</small>
+                </div>
+
+                <div class="input-group">
+                    <label for="runTime">Run Time (seconds)</label>
+                    <input type="number" id="runTime" min="1" max="240" step="1" value="60">
+                    <small>Range: 1 - 240 seconds</small>
+                </div>
+
+                <div class="input-group">
+                    <label for="rampTime">Ramp Time (seconds)</label>
+                    <input type="number" id="rampTime" min="1" max="120" step="1" value="25">
+                    <small>Range: 1 - 120 seconds</small>
+                </div>
+
+                <button class="btn btn-update" id="updateBtn" onclick="updateSettings()" disabled>
+                    Update Settings
+                </button>
+            </div>
+
+            <div class="panel">
+                <h2>Status</h2>
+                <div class="status-display">
+                    <div class="stage-indicator">
+                        <div class="stage-name" id="currentStage">Idle</div>
+                        <div class="stage-progress">
+                            <span class="stage-step active">Idle</span>
+                            <span class="stage-step">Positioning</span>
+                            <span class="stage-step">Dispensing</span>
+                            <span class="stage-step">Spinning</span>
+                        </div>
+                    </div>
+
+                    <div class="rpm-gauge">
+                        <div class="rpm-value" id="currentRPM">0</div>
+                        <div class="rpm-label">RPM</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="panel control-panel">
+                <h2>Controls</h2>
+                <div class="control-buttons">
+                    <button class="btn btn-start" id="startBtn" onclick="startCycle()" disabled>
+                        START SPIN CYCLE
+                    </button>
+                    <button class="btn btn-stop" id="stopBtn" onclick="emergencyStop()" disabled>
+                        EMERGENCY STOP
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let ws = null;
+        let isConnected = false;
+        
+        const stages = ['Idle', 'Positioning', 'Dispensing', 'RampUp', 'RampDown', 'Spinning'];
+        
+        function toggleConnection() {
+            if (isConnected) {
+                disconnect();
+            } else {
+                connect();
+            }
+        }
+        
+        function connect() {
+            const ip = document.getElementById('ipAddress').value;
+            if (!ip) {
+                alert('Please enter ESP32 IP address');
+                return;
+            }
+            
+            try {
+                ws = new WebSocket(`ws://${ip}/ws`);
+                ws.binaryType = 'arraybuffer';
+                
+                ws.onopen = () => {
+                    isConnected = true;
+                    updateConnectionUI();
+                };
+                
+                ws.onmessage = (event) => {
+                    if (event.data instanceof ArrayBuffer) {
+                        handleStatusUpdate(event.data);
+                    } else {
+                    }
+                };
+                
+                ws.onerror = (error) => {
+                };
+                
+                ws.onclose = (event) => {
+                    isConnected = false;
+                    updateConnectionUI();
+                };
+            } catch (error) {
+                alert('Failed to connect: ' + error.message);
+            }
+        }
+        
+        function disconnect() {
+            if (ws) {
+                ws.close();
+            }
+            isConnected = false;
+            updateConnectionUI();
+        }
+        
+        function updateConnectionUI() {
+            const statusDot = document.getElementById('statusDot');
+            const connectionText = document.getElementById('connectionText');
+            const connectBtn = document.getElementById('connectBtn');
+            const updateBtn = document.getElementById('updateBtn');
+            const startBtn = document.getElementById('startBtn');
+            const stopBtn = document.getElementById('stopBtn');
+            
+            if (isConnected) {
+                statusDot.classList.add('connected');
+                connectionText.textContent = 'Connected';
+                connectBtn.textContent = 'Disconnect';
+                updateBtn.disabled = false;
+                startBtn.disabled = false;
+                stopBtn.disabled = false;
+            } else {
+                statusDot.classList.remove('connected');
+                connectionText.textContent = 'Disconnected';
+                connectBtn.textContent = 'Connect';
+                updateBtn.disabled = true;
+                startBtn.disabled = true;
+                stopBtn.disabled = true;
+            }
+        }
+        
+        function calculateCRC8(data) {
+            let crc = 0;
+            for (let byte of data) {
+                for (let i = 0; i < 8; i++) {
+                    const sum = (crc ^ byte) & 0x01;
+                    crc >>= 1;
+                    if (sum) crc ^= 0x8C;
+                    byte >>= 1;
+                }
+            }
+            return crc;
+        }
+        
+        function updateSettings() {
+            if (!isConnected || !ws || ws.readyState !== WebSocket.OPEN) {
+                alert('Not connected to spin coater');
+                return;
+            }
+            
+            const zHeight = parseFloat(document.getElementById('zHeight').value);
+            const dispenseVol = parseFloat(document.getElementById('dispenseVol').value);
+            const targetRPM = parseInt(document.getElementById('targetRPM').value);
+            const runTime = parseInt(document.getElementById('runTime').value) * 1000;
+            const rampTime = parseInt(document.getElementById('rampTime').value) * 1000;
+            
+            if (zHeight < 0 || zHeight > 300) {
+                alert('Z height must be between 0 and 300 mm');
+                return;
+            }
+            if (dispenseVol < 25 || dispenseVol > 1000) {
+                alert('Dispense volume must be between 25 and 1000 µL');
+                return;
+            }
+            if (targetRPM < 300 || targetRPM > 8000) {
+                alert('Target RPM must be between 300 and 8000');
+                return;
+            }
+            if (runTime < 1000 || runTime > 240000) {
+                alert('Run time must be between 1 and 240 seconds');
+                return;
+            }
+            if (rampTime < 1000 || rampTime > 120000) {
+                alert('Ramp time must be between 1 and 120 seconds');
+                return;
+            }
+            
+            try {
+                const buffer = new ArrayBuffer(15);
+                const view = new DataView(buffer);
+                
+                view.setFloat32(0, zHeight, true);
+                view.setFloat32(4, dispenseVol, true);
+                view.setUint16(8, targetRPM, true);
+                view.setUint16(10, runTime, true);
+                view.setUint16(12, rampTime, true);
+                
+                const dataArray = new Uint8Array(buffer, 0, 14);
+                const crc = calculateCRC8(dataArray);
+                view.setUint8(14, crc);
+                
+                ws.send(buffer);
+            } catch (error) {
+                alert('Failed to send settings: ' + error.message);
+            }
+        }
+        
+        function startCycle() {
+            if (!isConnected || !ws || ws.readyState !== WebSocket.OPEN) {
+                alert('Not connected to spin coater');
+                return;
+            }
+            
+            if (confirm('Start spin coating cycle?')) {
+                try {
+                    const buffer = new Uint8Array([0x53]);
+                    ws.send(buffer.buffer);
+                } catch (error) {
+                    alert('Failed to send command: ' + error.message);
+                }
+            }
+        }
+        
+        function emergencyStop() {
+            if (!isConnected || !ws || ws.readyState !== WebSocket.OPEN) {
+                return;
+            }
+            
+            try {
+                const buffer = new Uint8Array([0x58]);
+                ws.send(buffer.buffer);
+            } catch (error) {
+            }
+        }
+        
+        function handleStatusUpdate(data) {
+            const view = new DataView(data);
+            
+            const currentZ = view.getFloat32(0, true);
+            const currentRPM = view.getUint16(4, true); 
+            const stageByte = view.getUint8(6);
+            const wsConnected = view.getUint8(7) === 1;
+            const receivedCRC = view.getUint8(11);
+            
+            // Verify CRC
+            const dataArray = new Uint8Array(data, 0, 11);
+            const calculatedCRC = calculateCRC8(dataArray);
+            
+            if (calculatedCRC !== receivedCRC) {
+                return;
+            }
+            
+            const currentStage = stages[stageByte] || 'Unknown';
+            
+            // Update UI
+            document.getElementById('currentStage').textContent = currentStage;
+            document.getElementById('currentRPM').textContent = currentRPM;
+            
+            // Update stage progress indicators
+            const stageSteps = document.querySelectorAll('.stage-step');
+            stageSteps.forEach((step, index) => {
+                step.classList.remove('active');
+                if (index === stageByte || (stageByte === 0 && index === 0)) {
+                    step.classList.add('active');
+                }
+            });
+        }
+    </script>
+</body>
+</html>

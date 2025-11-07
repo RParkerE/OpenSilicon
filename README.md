@@ -19,6 +19,11 @@ We are currently developing the alpha stage of the fabrication pipeline, targeti
 This is an early-stage project. All equipment designs and processes are works in progress and subject to change. Current development focus:
 
 - Spin coating system development
+    - First prototype completed
+    - TODO: Dial in steps per mm and uL in positioning and dispensing respectfully
+    - TODO: Integrate TFT dispaly
+    - TODO: Add homing switch and sequence for positioning
+    - TODO: Add a resist fill method
 - UV exposure system optimization
 - Oxidation furnace fabrication pipeline
 - PVD deposition system integration
@@ -45,7 +50,7 @@ Join us to help shape the project during these formative stages.
 
 | Equipment | Status | Notes |
 |-----------|--------|-------|
-| Spin Coater | 🔄 In Progress | Initial build phase |
+| Spin Coater | 🔄 In Progress | Finalizing initial build phase |
 | UV Exposure System | 🔄 In Progress | Initial build phase |
 | Oxidation Furnace | 🔄 In Progress | Initial build phase |
 | PVD Deposition System | 🔄 In Progress | Initial build phase |
