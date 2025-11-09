@@ -1,6 +1,6 @@
-// ─────────────────────────────────────────────
+// ---------------------------------------------
 //  IMPORTS
-// ─────────────────────────────────────────────
+// ---------------------------------------------
 #include <Arduino.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -26,9 +26,9 @@
 #include "HardwareSerial.h"
 #include <elapsedMillis.h>
 
-// ─────────────────────────────────────────────
+// ---------------------------------------------
 //  PIN ASSIGNMENTS
-// ─────────────────────────────────────────────
+// ---------------------------------------------
 #define DRIVER_ADDRESS 0b00
 #define PIN_TMC_STEP 25
 #define PIN_TMC_DIR 26
@@ -36,38 +36,38 @@
 #define PIN_TMC_TX 17
 #define PIN_TMC_RX 16
 HardwareSerial TMCSerial(2);
-#define PIN_LIMIT_SWITCH 34
+#define PIN_LIMIT_SWITCH 19
 
-#define PIN_ULN_IN1 19
+#define PIN_ULN_IN1 32
 #define PIN_ULN_IN2 21
-#define PIN_ULN_IN3 23
+#define PIN_ULN_IN3 14
 #define PIN_ULN_IN4 33
 
-#define PIN_ESC_DSHOT 18
+#define PIN_ESC_DSHOT 13
 #define PIN_ESC_RX 9
 HardwareSerial TelSerial(1);
 
-#undef TFT_CS
-#undef TFT_DC
-#undef TFT_RST
+#define ILI9341_DRIVER
+#define TFT_MOSI 23
+#define TFT_SCLK 18
 #define TFT_CS 15
-#define TFT_DC 2
+#define TFT_DC 22
 #define TFT_RST 4
 
-#define STATUS_LED_PIN 22 
+#define STATUS_LED_PIN 2
 
-// ─────────────────────────────────────────────
+// ---------------------------------------------
 //  WiFi & WebSocket
-// ─────────────────────────────────────────────
+// ---------------------------------------------
 const char *WIFI_SSID = "YourSSID";
 const char *WIFI_PASSWORD = "YourPassword";
 
 AsyncWebServer server(80);
 AsyncWebSocket ws("/ws");
 
-// ─────────────────────────────────────────────
+// ---------------------------------------------
 //  MOTION LIMITS & CONFIG
-// ─────────────────────────────────────────────
+// ---------------------------------------------
 #define DEFAULT_DISPENSE_SPEED 600
 #define DEFAULT_COAT_SPEED 3000
 #define MIN_COAT_SPEED 300
@@ -116,10 +116,12 @@ rmt_item32_t dshotPacket[DSHOT_FRAME_SIZE];
 #define TASK_PRIORITY_LOW 2
 
 #define Z_HEIGHT_MAX 300
+#define HOMING_SPEED 1000
+#define HOMING_OFFSET 5.0
 
-// ─────────────────────────────────────────────
+// ---------------------------------------------
 //  STRUCTURES
-// ─────────────────────────────────────────────
+// ---------------------------------------------
 struct SpinSettings {
     float zHeight;
     float dispenseVol;
@@ -148,7 +150,7 @@ AccelStepper stepper = AccelStepper(stepper.DRIVER, PIN_TMC_STEP, PIN_TMC_DIR);
 
 // 28BYJ-48 - ULN2003
 constexpr uint32_t steps_per_ul = 4096;
-AccelStepper dispensor(AccelStepper::HALF4WIRE, PIN_ULN_IN1, PIN_ULN_IN3, PIN_ULN_IN2, PIN_ULN_IN4);
+AccelStepper dispensor(AccelStepper::HALF4WIRE, PIN_ULN_IN1, PIN_ULN_IN2, PIN_ULN_IN3, PIN_ULN_IN4);
 
 // ESC
 elapsedMillis time_ramping = 0;
@@ -187,6 +189,7 @@ PID_RT motorPID(Kp, Ki, Kd, sample_time);
 
 enum state {
     STATE_IDLE,
+    STATE_HOMING,
     STATE_POSITIONING,
     STATE_DISPENSING,
     STATE_RAMPUP,
@@ -195,13 +198,16 @@ enum state {
 };
 state current_state, previous_state = STATE_IDLE;
 
+bool isHomed = false;
+
 SemaphoreHandle_t xTelemetrySemaphore = NULL;
 SemaphoreHandle_t xMotionSemaphore = NULL;
-SemaphoreHandle_t xStateSemaphore = NULL;   
+SemaphoreHandle_t xStateSemaphore = NULL;
+SemaphoreHandle_t xDisplaySemaphore = NULL;
 
-// ─────────────────────────────────────────────
+// ---------------------------------------------
 //  FUNCTION DECLARATIONS
-// ─────────────────────────────────────────────
+// ---------------------------------------------
 void handleWebRequest();
 void updateSettings(float zHeight, float dispenseVol, int targetRPM, int runTime, int rampTime);
 void moveZAxis(float targetHeight);
@@ -213,10 +219,12 @@ uint8_t mapStageToByte(String stage);
 uint8_t crc8(uint8_t *data, uint8_t len);
 void initDshot();
 void dshotOutput(uint16_t value, bool telemetry);
+void homeZAxis();
+void updateDisplay();
 
-// ─────────────────────────────────────────────
+// ---------------------------------------------
 //  DSHOT FUNCTIONS - DSHOT 1200
-// ─────────────────────────────────────────────
+// ---------------------------------------------
 uint8_t dshotCRC(uint16_t frame) {
     uint8_t crc = 0;
     uint16_t crc_data = frame;
@@ -323,9 +331,59 @@ void blinkLED(int times, int delayMs) {
     }
 }
 
-// ─────────────────────────────────────────────
+// ---------------------------------------------
+//  HOMING
+// ---------------------------------------------
+void homeZAxis() {
+    isHomed = false;
+
+    if (digitalRead(PIN_LIMIT_SWITCH) == LOW) {
+        stepper.setMaxSpeed(1000);
+        stepper.setAcceleration(500);
+        stepper.move(steps_per_mm * 10);
+        while (stepper.distanceToGo() != 0) {
+            stepper.run();
+            vTaskDelay(pdMS_TO_TICKS(1));
+        }
+        delay(100); 
+    }
+    
+    stepper.setMaxSpeed(HOMING_SPEED);
+    stepper.setAcceleration(500);
+    stepper.move(-steps_per_mm * 400);
+    
+    while (digitalRead(PIN_LIMIT_SWITCH) == HIGH) {
+        stepper.run();
+        if (stepper.distanceToGo() == 0) {
+            Serial.println("Homing failed - limit switch not found");
+            return;
+        }
+        vTaskDelay(pdMS_TO_TICKS(1));
+    }
+    
+    stepper.stop();
+    stepper.setCurrentPosition(0);
+    delay(100);
+    
+    stepper.setMaxSpeed(1000);
+    stepper.setAcceleration(500);
+    stepper.moveTo(steps_per_mm * HOMING_OFFSET);
+    while (stepper.distanceToGo() != 0) {
+        stepper.run();
+        vTaskDelay(pdMS_TO_TICKS(1));
+    }
+    
+    stepper.setCurrentPosition(0);
+    
+    stepper.setMaxSpeed(2000);
+    stepper.setAcceleration(1000);
+    
+    isHomed = true;
+}
+
+// ---------------------------------------------
 //  WEB / SETTINGS
-// ─────────────────────────────────────────────
+// ---------------------------------------------
 void handleWebRequest() {
     ws.onEvent([](AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType type,
                    void *arg, uint8_t *data, size_t len) {
@@ -368,9 +426,22 @@ void handleWebRequest() {
                     updateSettings(zHeight, dispense, rpm, runTime, rampTime);
                 }
                 else if (len == 1) {
-                    if (data[0] == 0x53) {  // 'S'
+                    if (data[0] == 0x48) {  // 'H' - Home command
+                        if (xSemaphoreTake(xMotionSemaphore, pdMS_TO_TICKS(100))) {
+                            if (current_state == STATE_IDLE) {
+                                current_state = STATE_HOMING;
+                            }
+                            xSemaphoreGive(xMotionSemaphore);
+                        }
+                    }
+                    else if (data[0] == 0x53) {  // 'S' - Start
                         digitalWrite(STATUS_LED_PIN, HIGH);
                 
+                        if (!isHomed) {
+                            blinkLED(5, 100);
+                            return;
+                        }
+                        
                         if (xSemaphoreTake(xMotionSemaphore, pdMS_TO_TICKS(100))) {
                             if (current_state == STATE_IDLE) {
                                 current_state = STATE_POSITIONING;
@@ -383,7 +454,7 @@ void handleWebRequest() {
                             blinkLED(5, 100);
                         }
                     }
-                    else if (data[0] == 0x58) {  // 'X'
+                    else if (data[0] == 0x58) {  // 'X' - Emergency stop
                         if (xSemaphoreTake(xMotionSemaphore, pdMS_TO_TICKS(100))) {
                             current_state = STATE_IDLE;
                             previous_state = STATE_IDLE;
@@ -418,15 +489,11 @@ void moveZAxis(float targetHeight) {
 
 void dispenseResist(float volumeUL) {
     int32_t steps = steps_per_ul * (volumeUL / 25.0);
-    dispensor.move(steps);
     
-    // Debug via LED: blink 5 times rapidly to show dispense started
-    for(int i = 0; i < 5; i++) {
-        digitalWrite(STATUS_LED_PIN, HIGH);
-        delay(50);
-        digitalWrite(STATUS_LED_PIN, LOW);
-        delay(50);
-    }
+    dispensor.setMaxSpeed(800); 
+    dispensor.setAcceleration(400);  
+    
+    dispensor.move(steps);
 }
 
 void runSpinCycle() {
@@ -441,6 +508,19 @@ void runSpinCycle() {
                 currentTelemetry.runStage = "Idle";
             }
             last_executed_state = STATE_IDLE;
+            break;
+        
+        case STATE_HOMING:
+            digitalWrite(STATUS_LED_PIN, HIGH);
+            if (state_changed) {
+                currentTelemetry.runStage = "Homing";
+                homeZAxis();
+                if (xSemaphoreTake(xStateSemaphore, pdMS_TO_TICKS(5))) {
+                    current_state = STATE_IDLE;
+                    xSemaphoreGive(xStateSemaphore);
+                }
+            }
+            last_executed_state = STATE_HOMING;
             break;
             
         case STATE_POSITIONING:
@@ -467,11 +547,12 @@ void runSpinCycle() {
             }
             
             if (dispensor.distanceToGo() == 0) {
+                digitalWrite(PIN_ULN_IN1, LOW);
+                digitalWrite(PIN_ULN_IN2, LOW);
+                digitalWrite(PIN_ULN_IN3, LOW);
+                digitalWrite(PIN_ULN_IN4, LOW);
+                
                 if (xSemaphoreTake(xStateSemaphore, pdMS_TO_TICKS(5))) {
-                    digitalWrite(PIN_ULN_IN1, LOW);
-                    digitalWrite(PIN_ULN_IN2, LOW);
-                    digitalWrite(PIN_ULN_IN3, LOW);
-                    digitalWrite(PIN_ULN_IN4, LOW);
                     current_state = STATE_RAMPUP;
                     xSemaphoreGive(xStateSemaphore);
                 }
@@ -564,8 +645,7 @@ void sendStatusUpdate() {
     memcpy(packet + 4, &rpmToSend, 2);
     packet[6] = mapStageToByte(currentTelemetry.runStage);
     packet[7] = currentTelemetry.wsConnected ? 1 : 0;
-    
-    packet[8] = 0;
+    packet[8] = isHomed ? 1 : 0;
     packet[9] = 0;
     packet[10] = 0;
     
@@ -580,9 +660,89 @@ void sendStatusUpdate() {
     ws.binaryAll(packet, sizeof(packet));
 }
 
-// ─────────────────────────────────────────────
+// ---------------------------------------------
+//  TFT DISPLAY UPDATE
+// ---------------------------------------------
+void updateDisplay() {
+    static String lastStage = "";
+    static int lastRPM = -1;
+    static float lastZ = -999;
+    static bool lastHomed = false;
+    
+    bool needsUpdate = (currentTelemetry.runStage != lastStage) ||
+                       (currentTelemetry.currentRPM != lastRPM) ||
+                       (abs(currentTelemetry.currentZ - lastZ) > 0.1) ||
+                       (isHomed != lastHomed);
+    
+    if (!needsUpdate) return;
+    
+    tft.fillScreen(TFT_BLACK);
+    tft.setTextColor(TFT_WHITE, TFT_BLACK);
+    
+    tft.setTextSize(2);
+    tft.setCursor(10, 10);
+    tft.println("SPIN COATER");
+    
+    tft.setTextSize(1);
+    tft.setCursor(10, 35);
+    if (isHomed) {
+        tft.setTextColor(TFT_GREEN, TFT_BLACK);
+        tft.println("HOMED");
+    } else {
+        tft.setTextColor(TFT_RED, TFT_BLACK);
+        tft.println("NOT HOMED");
+    }
+    tft.setTextColor(TFT_WHITE, TFT_BLACK);
+    
+    // State
+    tft.setTextSize(2);
+    tft.setCursor(10, 55);
+    tft.print("State: ");
+    tft.setTextColor(TFT_CYAN, TFT_BLACK);
+    tft.println(currentTelemetry.runStage);
+    tft.setTextColor(TFT_WHITE, TFT_BLACK);
+    
+    // RPM
+    tft.setTextSize(3);
+    tft.setCursor(10, 90);
+    tft.print(currentTelemetry.currentRPM);
+    tft.setTextSize(2);
+    tft.println(" RPM");
+    
+    // Z Position
+    tft.setTextSize(2);
+    tft.setCursor(10, 130);
+    tft.print("Z: ");
+    tft.print(currentTelemetry.currentZ, 1);
+    tft.println(" mm");
+    
+    // Settings
+    tft.setTextSize(1);
+    tft.setCursor(10, 160);
+    tft.println("Settings:");
+    tft.setCursor(10, 175);
+    tft.print("Target: ");
+    tft.print(currentSettings.targetRPM);
+    tft.println(" RPM");
+    tft.setCursor(10, 190);
+    tft.print("Time: ");
+    tft.print(currentSettings.runTime / 1000);
+    tft.println(" s");
+    tft.setCursor(10, 205);
+    tft.print("Vol: ");
+    tft.print(currentSettings.dispenseVol, 0);
+    tft.println(" uL");
+    
+    // Update last values
+    lastStage = currentTelemetry.runStage;
+    lastRPM = currentTelemetry.currentRPM;
+    lastZ = currentTelemetry.currentZ;
+    lastHomed = isHomed;
+}
+
+// ---------------------------------------------
 //  UTILITY FUNCTIONS
-// ─────────────────────────────────────────────
+// ---------------------------------------------
 bool validateInputs(float zHeight, float dispenseVol, int targetRPM, int runTime, int rampTime) {
     return (zHeight >= 0 && zHeight <= Z_HEIGHT_MAX) &&
            (dispenseVol >= 25 && dispenseVol <= 1000) &&
@@ -593,11 +753,12 @@ bool validateInputs(float zHeight, float dispenseVol, int targetRPM, int runTime
 
 uint8_t mapStageToByte(String stage) {
     if (stage == "Idle") return 0;
-    if (stage == "Positioning") return 1;
-    if (stage == "Dispensing") return 2;
-    if (stage == "RampUp") return 3;
-    if (stage == "RampDown") return 4;
-    if (stage == "Spinning") return 5;
+    if (stage == "Homing") return 1;        
+    if (stage == "Positioning") return 2;   
+    if (stage == "Dispensing") return 3;    
+    if (stage == "RampUp") return 4;        
+    if (stage == "RampDown") return 5;     
+    if (stage == "Spinning") return 6;      
     return 255;
 }
 
@@ -615,24 +776,32 @@ uint8_t crc8(uint8_t *data, uint8_t len) {
     return crc;
 }
 
-// FreeRTOS Tasks
+// ---------------------------------------------
+//  FreeRTOS FUNCTIONS
+// ---------------------------------------------
 void taskMotionControl(void * pvParameters) {
+    const TickType_t xFrequency = pdMS_TO_TICKS(1);
+    TickType_t xLastWakeTime = xTaskGetTickCount();
+    
     for (;;) {
         stepper.run();
         dispensor.run();
         
-        vTaskDelay(pdMS_TO_TICKS(1));
+        vTaskDelayUntil(&xLastWakeTime, xFrequency);
     }
 }
 
 void taskSpinControl(void * pvParameters) {
+    const TickType_t xFrequency = pdMS_TO_TICKS(1);
+    TickType_t xLastWakeTime = xTaskGetTickCount();
+    
     for (;;) {
         if (xSemaphoreTake(xMotionSemaphore, pdMS_TO_TICKS(10))) {
             runSpinCycle();
             xSemaphoreGive(xMotionSemaphore);
         }
         
-        vTaskDelay(pdMS_TO_TICKS(1));
+        vTaskDelayUntil(&xLastWakeTime, xFrequency);
     }
 }
 
@@ -654,7 +823,7 @@ void taskTelemetry(void * pvParameters) {
             digitalWrite(STATUS_LED_PIN, !digitalRead(STATUS_LED_PIN));
         }
         
-        // ═══ TELEMETRY PARSING ═══
+        // TELEMETRY PARSING
         if (TelSerial.available() >= 10) {
             uint8_t buffer[10];
             TelSerial.readBytes(buffer, 10);
@@ -745,7 +914,11 @@ void taskTelemetry(void * pvParameters) {
 
 void taskDisplay(void * pvParameters) {
     for (;;) {
-        vTaskDelay(pdMS_TO_TICKS(100));
+        if (xSemaphoreTake(xDisplaySemaphore, pdMS_TO_TICKS(20))) {
+            updateDisplay();
+            xSemaphoreGive(xDisplaySemaphore);
+        }
+        vTaskDelay(pdMS_TO_TICKS(200));
     } 
 }
 
@@ -783,9 +956,9 @@ void taskWebSocket(void * pvParameters) {
     }
 }
 
-// ─────────────────────────────────────────────
+// ---------------------------------------------
 //  SETUP / LOOP
-// ─────────────────────────────────────────────
+// ---------------------------------------------
 void setup() {
     Serial.begin(115200);
 
@@ -794,8 +967,9 @@ void setup() {
 
     pinMode(PIN_TMC_EN, OUTPUT);
     digitalWrite(PIN_TMC_EN, LOW);
+
+    pinMode(PIN_LIMIT_SWITCH, INPUT_PULLUP);
     
-    // Setup ULN2003 pins as outputs
     pinMode(PIN_ULN_IN1, OUTPUT);
     pinMode(PIN_ULN_IN2, OUTPUT);
     pinMode(PIN_ULN_IN3, OUTPUT);
@@ -818,9 +992,20 @@ void setup() {
     stepper.setMaxSpeed(2000);
     stepper.setAcceleration(1000);
 
-    dispensor.setMaxSpeed(250);
-    dispensor.setAcceleration(150);
-    dispensor.setSpeed(250);  
+    dispensor.setMaxSpeed(800);    
+    dispensor.setAcceleration(400); 
+    dispensor.setSpeed(600);  
+
+    tft.init();
+    tft.setRotation(1);
+    tft.fillScreen(TFT_BLACK);
+    tft.setTextColor(TFT_WHITE, TFT_BLACK);
+    tft.setTextSize(2);
+    tft.setCursor(60, 100);
+    tft.println("SPIN COATER");
+    tft.setTextSize(1);
+    tft.setCursor(80, 130);
+    tft.println("Initializing...");
 
     currentSettings.zHeight = 50.0;
     currentSettings.dispenseVol = 100.0;
@@ -859,6 +1044,7 @@ void setup() {
     xTelemetrySemaphore = xSemaphoreCreateMutex();
     xMotionSemaphore    = xSemaphoreCreateMutex();
     xStateSemaphore     = xSemaphoreCreateMutex();
+    xDisplaySemaphore   = xSemaphoreCreateMutex(); 
 
     xTaskCreatePinnedToCore(taskSpinControl, "Spin", TASK_STACK_DEFAULT, NULL, TASK_PRIORITY_HIGH, NULL, 0); 
     xTaskCreatePinnedToCore(taskTelemetry, "Telemetry", TASK_STACK_DEFAULT, NULL, TASK_PRIORITY_MED, NULL, 0);
@@ -868,6 +1054,8 @@ void setup() {
     xTaskCreatePinnedToCore(taskDisplay, "Display", TASK_STACK_DEFAULT, NULL, TASK_PRIORITY_LOW, NULL, 1);  
 
     blinkLED(2, 200);
+    tft.fillScreen(TFT_BLACK);
+    updateDisplay();
 }
 
 void loop() {}

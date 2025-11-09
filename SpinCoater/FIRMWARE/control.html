@@ -254,16 +254,64 @@
         .btn-start:hover {
             background: #136634;
         }
+
+        .btn-start:disabled {
+            background: #9ca3af;
+            cursor: not-allowed;
+        }
+    
+        .btn-home {
+            background: #0369a1;
+            color: white;
+            padding: 14px;
+            font-size: 1.1em;
+        }
+    
+        .btn-home:hover {
+            background: #075985;
+        }
+
+        .btn-home:disabled {
+            background: #9ca3af;
+            cursor: not-allowed;
+        }
     
         .btn-stop {
             background: #b91c1c;
             color: white;
             padding: 14px;
             font-size: 1.1em;
+            grid-column: 1 / -1;
         }
     
         .btn-stop:hover {
             background: #991b1b;
+        }
+
+        .btn-stop:disabled {
+            background: #9ca3af;
+            cursor: not-allowed;
+        }
+
+        .homing-status {
+            background: #fef3c7;
+            border: 1px solid #fbbf24;
+            padding: 10px 14px;
+            border-radius: 4px;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 0.9em;
+        }
+
+        .homing-status.homed {
+            background: #d1fae5;
+            border-color: #10b981;
+        }
+
+        .homing-status .icon {
+            font-size: 1.2em;
         }
     
         .rpm-gauge {
@@ -302,7 +350,7 @@
                    class="ip-input"
                    id="ipAddress"
                    placeholder="ESP32 IP Address"
-                   value="192.168.0.1">
+                   value="192.168.1.100">
             <button class="btn btn-connect" id="connectBtn" onclick="toggleConnection()">Connect</button>
         </div>
 
@@ -346,14 +394,23 @@
 
             <div class="panel">
                 <h2>Status</h2>
+                
+                <div class="homing-status" id="homingStatus">
+                    <span class="icon">⚠</span>
+                    <span id="homingText">NOT HOMED - Home axis before operation</span>
+                </div>
+
                 <div class="status-display">
                     <div class="stage-indicator">
                         <div class="stage-name" id="currentStage">Idle</div>
                         <div class="stage-progress">
                             <span class="stage-step active">Idle</span>
-                            <span class="stage-step">Positioning</span>
-                            <span class="stage-step">Dispensing</span>
+                            <span class="stage-step">Homing</span>
+                            <span class="stage-step">Position</span>
+                            <span class="stage-step">Dispense</span>
+                            <span class="stage-step">RampUp</span>
                             <span class="stage-step">Spinning</span>
+                            <span class="stage-step">RampDown</span>
                         </div>
                     </div>
 
@@ -367,8 +424,11 @@
             <div class="panel control-panel">
                 <h2>Controls</h2>
                 <div class="control-buttons">
+                    <button class="btn btn-home" id="homeBtn" onclick="homeAxis()" disabled>
+                        HOME Z-AXIS
+                    </button>
                     <button class="btn btn-start" id="startBtn" onclick="startCycle()" disabled>
-                        START SPIN CYCLE
+                        START CYCLE
                     </button>
                     <button class="btn btn-stop" id="stopBtn" onclick="emergencyStop()" disabled>
                         EMERGENCY STOP
@@ -381,8 +441,18 @@
     <script>
         let ws = null;
         let isConnected = false;
+        let isHomed = false;
         
-        const stages = ['Idle', 'Positioning', 'Dispensing', 'RampUp', 'RampDown', 'Spinning'];
+        const stages = ['Idle', 'Homing', 'Positioning', 'Dispensing', 'RampUp', 'RampDown', 'Spinning'];
+        const stageDisplayNames = {
+            'Idle': 'Idle',
+            'Homing': 'Homing Z-Axis',
+            'Positioning': 'Positioning',
+            'Dispensing': 'Dispensing Resist',
+            'RampUp': 'Ramping Up',
+            'RampDown': 'Ramping Down',
+            'Spinning': 'Spinning'
+        };
         
         function toggleConnection() {
             if (isConnected) {
@@ -406,21 +476,23 @@
                 ws.onopen = () => {
                     isConnected = true;
                     updateConnectionUI();
+                    console.log('Connected to spin coater');
                 };
                 
                 ws.onmessage = (event) => {
                     if (event.data instanceof ArrayBuffer) {
                         handleStatusUpdate(event.data);
-                    } else {
                     }
                 };
                 
                 ws.onerror = (error) => {
+                    console.error('WebSocket error:', error);
                 };
                 
                 ws.onclose = (event) => {
                     isConnected = false;
                     updateConnectionUI();
+                    console.log('Disconnected from spin coater');
                 };
             } catch (error) {
                 alert('Failed to connect: ' + error.message);
@@ -440,6 +512,7 @@
             const connectionText = document.getElementById('connectionText');
             const connectBtn = document.getElementById('connectBtn');
             const updateBtn = document.getElementById('updateBtn');
+            const homeBtn = document.getElementById('homeBtn');
             const startBtn = document.getElementById('startBtn');
             const stopBtn = document.getElementById('stopBtn');
             
@@ -448,15 +521,39 @@
                 connectionText.textContent = 'Connected';
                 connectBtn.textContent = 'Disconnect';
                 updateBtn.disabled = false;
-                startBtn.disabled = false;
+                homeBtn.disabled = false;
                 stopBtn.disabled = false;
+                startBtn.disabled = !isHomed;
             } else {
                 statusDot.classList.remove('connected');
                 connectionText.textContent = 'Disconnected';
                 connectBtn.textContent = 'Connect';
                 updateBtn.disabled = true;
+                homeBtn.disabled = true;
                 startBtn.disabled = true;
                 stopBtn.disabled = true;
+            }
+        }
+
+        function updateHomingUI(homed) {
+            isHomed = homed;
+            const homingStatus = document.getElementById('homingStatus');
+            const homingText = document.getElementById('homingText');
+            const startBtn = document.getElementById('startBtn');
+            const icon = homingStatus.querySelector('.icon');
+            
+            if (homed) {
+                homingStatus.classList.add('homed');
+                icon.textContent = '✓';
+                homingText.innerHTML = '<strong>HOMED</strong> - Ready for operation';
+                if (isConnected) {
+                    startBtn.disabled = false;
+                }
+            } else {
+                homingStatus.classList.remove('homed');
+                icon.textContent = '⚠';
+                homingText.textContent = 'NOT HOMED - Home axis before operation';
+                startBtn.disabled = true;
             }
         }
         
@@ -521,8 +618,26 @@
                 view.setUint8(14, crc);
                 
                 ws.send(buffer);
+                console.log('Settings updated successfully');
             } catch (error) {
                 alert('Failed to send settings: ' + error.message);
+            }
+        }
+
+        function homeAxis() {
+            if (!isConnected || !ws || ws.readyState !== WebSocket.OPEN) {
+                alert('Not connected to spin coater');
+                return;
+            }
+            
+            if (confirm('Home Z-axis? The stage will move to the limit switch.')) {
+                try {
+                    const buffer = new Uint8Array([0x48]); // 'H' command
+                    ws.send(buffer.buffer);
+                    console.log('Homing command sent');
+                } catch (error) {
+                    alert('Failed to send homing command: ' + error.message);
+                }
             }
         }
         
@@ -531,11 +646,17 @@
                 alert('Not connected to spin coater');
                 return;
             }
+
+            if (!isHomed) {
+                alert('Please home the Z-axis first before starting a cycle');
+                return;
+            }
             
             if (confirm('Start spin coating cycle?')) {
                 try {
-                    const buffer = new Uint8Array([0x53]);
+                    const buffer = new Uint8Array([0x53]); // 'S' command
                     ws.send(buffer.buffer);
+                    console.log('Start command sent');
                 } catch (error) {
                     alert('Failed to send command: ' + error.message);
                 }
@@ -548,9 +669,11 @@
             }
             
             try {
-                const buffer = new Uint8Array([0x58]);
+                const buffer = new Uint8Array([0x58]); // 'X' command
                 ws.send(buffer.buffer);
+                console.log('Emergency stop sent');
             } catch (error) {
+                console.error('Failed to send stop command:', error);
             }
         }
         
@@ -561,27 +684,29 @@
             const currentRPM = view.getUint16(4, true); 
             const stageByte = view.getUint8(6);
             const wsConnected = view.getUint8(7) === 1;
+            const homedStatus = view.getUint8(8) === 1;
             const receivedCRC = view.getUint8(11);
             
-            // Verify CRC
             const dataArray = new Uint8Array(data, 0, 11);
             const calculatedCRC = calculateCRC8(dataArray);
             
             if (calculatedCRC !== receivedCRC) {
+                console.warn('CRC mismatch in status update');
                 return;
             }
             
             const currentStage = stages[stageByte] || 'Unknown';
+            const displayName = stageDisplayNames[currentStage] || currentStage;
             
-            // Update UI
-            document.getElementById('currentStage').textContent = currentStage;
+            document.getElementById('currentStage').textContent = displayName;
             document.getElementById('currentRPM').textContent = currentRPM;
             
-            // Update stage progress indicators
+            updateHomingUI(homedStatus);
+            
             const stageSteps = document.querySelectorAll('.stage-step');
             stageSteps.forEach((step, index) => {
                 step.classList.remove('active');
-                if (index === stageByte || (stageByte === 0 && index === 0)) {
+                if (index === stageByte) {
                     step.classList.add('active');
                 }
             });
