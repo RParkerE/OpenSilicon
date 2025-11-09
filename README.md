@@ -21,8 +21,6 @@ This is an early-stage project. All equipment designs and processes are works in
 - Spin coating system development
     - First prototype completed
     - TODO: Dial in steps per mm and uL in positioning and dispensing respectfully
-    - TODO: Integrate TFT dispaly
-    - TODO: Add homing switch and sequence for positioning
     - TODO: Add a resist fill method
 - UV exposure system optimization
 - Oxidation furnace fabrication pipeline
