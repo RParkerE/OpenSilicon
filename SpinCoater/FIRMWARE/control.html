@@ -396,7 +396,6 @@
                 <h2>Status</h2>
                 
                 <div class="homing-status" id="homingStatus">
-                    <span class="icon">⚠</span>
                     <span id="homingText">NOT HOMED - Home axis before operation</span>
                 </div>
 
@@ -544,14 +543,12 @@
             
             if (homed) {
                 homingStatus.classList.add('homed');
-                icon.textContent = '✓';
                 homingText.innerHTML = '<strong>HOMED</strong> - Ready for operation';
                 if (isConnected) {
                     startBtn.disabled = false;
                 }
             } else {
                 homingStatus.classList.remove('homed');
-                icon.textContent = '⚠';
                 homingText.textContent = 'NOT HOMED - Home axis before operation';
                 startBtn.disabled = true;
             }

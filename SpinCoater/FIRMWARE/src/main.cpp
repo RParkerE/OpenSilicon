@@ -144,12 +144,12 @@ SpinTelemetry currentTelemetry;
 TFT_eSPI tft = TFT_eSPI();
 
 // NEMA17 - TMC2209
-constexpr uint32_t steps_per_mm = 160;
+constexpr uint32_t steps_per_mm = 200;
 TMC2209Stepper driver(&TMCSerial, R_SENSE, DRIVER_ADDRESS);
 AccelStepper stepper = AccelStepper(stepper.DRIVER, PIN_TMC_STEP, PIN_TMC_DIR);
 
 // 28BYJ-48 - ULN2003
-constexpr uint32_t steps_per_ul = 4096;
+constexpr uint32_t steps_per_ul = 410;
 AccelStepper dispensor(AccelStepper::HALF4WIRE, PIN_ULN_IN1, PIN_ULN_IN2, PIN_ULN_IN3, PIN_ULN_IN4);
 
 // ESC
@@ -352,15 +352,22 @@ void homeZAxis() {
     stepper.setAcceleration(500);
     stepper.move(-steps_per_mm * 400);
     
+    uint32_t homingStartTime = millis();
     while (digitalRead(PIN_LIMIT_SWITCH) == HIGH) {
         stepper.run();
+        
+        // Safety timeout
+        if (millis() - homingStartTime > 30000) {
+            stepper.stop();
+            return;
+        }
+        
         if (stepper.distanceToGo() == 0) {
-            Serial.println("Homing failed - limit switch not found");
             return;
         }
         vTaskDelay(pdMS_TO_TICKS(1));
     }
-    
+
     stepper.stop();
     stepper.setCurrentPosition(0);
     delay(100);
@@ -377,7 +384,7 @@ void homeZAxis() {
     
     stepper.setMaxSpeed(2000);
     stepper.setAcceleration(1000);
-    
+
     isHomed = true;
 }
 
@@ -493,7 +500,7 @@ void dispenseResist(float volumeUL) {
     dispensor.setMaxSpeed(800); 
     dispensor.setAcceleration(400);  
     
-    dispensor.move(steps);
+    dispensor.move(-steps);
 }
 
 void runSpinCycle() {
@@ -661,7 +668,7 @@ void sendStatusUpdate() {
 }
 
 // ---------------------------------------------
-//  TFT DISPLAY UPDATE
+//  TFT DISPLAY
 // ---------------------------------------------
 void updateDisplay() {
     static String lastStage = "";
@@ -733,7 +740,6 @@ void updateDisplay() {
     tft.print(currentSettings.dispenseVol, 0);
     tft.println(" uL");
     
-    // Update last values
     lastStage = currentTelemetry.runStage;
     lastRPM = currentTelemetry.currentRPM;
     lastZ = currentTelemetry.currentZ;
@@ -818,7 +824,6 @@ void taskTelemetry(void * pvParameters) {
     uint32_t debugCounter = 0;
     
     for (;;) {
-        // Blink LED every 100 cycles to show task is running
         if (debugCounter++ % 100 == 0) {
             digitalWrite(STATUS_LED_PIN, !digitalRead(STATUS_LED_PIN));
         }
@@ -843,7 +848,6 @@ void taskTelemetry(void * pvParameters) {
                     xSemaphoreGive(xTelemetrySemaphore);
                 }
                 
-                // Rapid blink to show telemetry received
                 digitalWrite(STATUS_LED_PIN, HIGH);
                 vTaskDelay(pdMS_TO_TICKS(2));
                 digitalWrite(STATUS_LED_PIN, LOW);
@@ -1023,23 +1027,15 @@ void setup() {
     motorPID.setOutputRange(pid_out_min, pid_out_max);
     motorPID.start();
 
-    blinkLED(3, 100);  // PID setup
-
     WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
     while (WiFi.status() != WL_CONNECTED) {
         delay(500);
     }
 
-    blinkLED(4, 100);  // WiFi connected
-
     handleWebRequest();
-
-    blinkLED(5, 100);  // WebServer started
 
     initDshot();
     initESC();
-
-    blinkLED(6, 100);  // ESC initialized
 
     xTelemetrySemaphore = xSemaphoreCreateMutex();
     xMotionSemaphore    = xSemaphoreCreateMutex();

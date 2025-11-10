@@ -19,8 +19,8 @@ We are currently developing the alpha stage of the fabrication pipeline, targeti
 This is an early-stage project. All equipment designs and processes are works in progress and subject to change. Current development focus:
 
 - Spin coating system development
-    - First prototype completed
-    - TODO: Dial in steps per mm and uL in positioning and dispensing respectfully
+    - Prototype Full Assembly
+    - TODO: Look into web socket connectivity issues
     - TODO: Add a resist fill method
 - UV exposure system optimization
 - Oxidation furnace fabrication pipeline
