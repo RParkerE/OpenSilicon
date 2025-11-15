@@ -10,19 +10,19 @@ Open-source semiconductor fabrication for the home lab. Build and operate IC fab
 
 OpenSilicon brings semiconductor fabrication capabilities into the home lab. This project provides comprehensive documentation, designs, and software for building functional IC fabrication equipment for research, education, and experimentation.
 
-We are currently developing the alpha stage of the fabrication pipeline, targeting 50-100 μm feature resolution across the complete process flow: spin coating, UV exposure, oxidation, and physical vapor deposition (PVD).
+We are currently developing the alpha stage of the fabrication pipeline, targeting sub micron feature resolution across the complete process flow: spin coating, direct write lithography, oxidation, and physical vapor deposition (PVD).
 
 ## Status
 
-🔄 **Alpha Stage - Active Development**
+**Alpha Stage - Active Development**
 
 This is an early-stage project. All equipment designs and processes are works in progress and subject to change. Current development focus:
 
-- Spin coating system development
-    - Prototype Full Assembly
+- Spin coating system
+    - Prototype full assembly complete
     - TODO: Look into web socket connectivity issues
     - TODO: Add a resist fill method
-- UV exposure system optimization
+- Direct write lithography system (405nm laser from blu-ray burner)
 - Oxidation furnace fabrication pipeline
 - PVD deposition system integration
 - Process characterization and documentation
@@ -40,18 +40,18 @@ Join us to help shape the project during these formative stages.
 
 ### Next Steps
 
-1. **Review the documentation** to understand the current state of each component
-3. **Check open issues** to see what's being worked on
-4. **Start contributing** - Documentation, testing, and feedback are valuable at this stage
+1. Review the documentation to understand the current state of each component
+2. Check open issues to see what's being worked on
+3. Start contributing - documentation, testing, and feedback are valuable at this stage
 
 ## Equipment in Development
 
 | Equipment | Status | Notes |
 |-----------|--------|-------|
-| Spin Coater | 🔄 In Progress | Finalizing initial build phase |
-| UV Exposure System | 🔄 In Progress | Initial build phase |
-| Oxidation Furnace | 🔄 In Progress | Initial build phase |
-| PVD Deposition System | 🔄 In Progress | Initial build phase |
+| Spin Coater | In Progress | Open issues remain |
+| Direct Write Lithography | In Progress | 405nm laser system development |
+| Oxidation Furnace | In Progress | Initial build phase |
+| PVD Deposition System | In Progress | Initial build phase |
 
 ## License
 
@@ -76,12 +76,12 @@ We actively welcome contributions. This project is in its early stages, and inpu
 
 ### Ways to Contribute
 
-- **Share feedback**: Comment on design decisions and approaches
-- **Document your work**: Help build the knowledge base
-- **Report issues**: Share problems, observations, and learnings
-- **Suggest improvements**: Propose design changes or optimizations
-- **Contribute code**: Firmware, software, and design improvements
-- **Test and validate**: Help characterize equipment performance
+- Share feedback on design decisions and approaches
+- Document your work and help build the knowledge base
+- Report issues, problems, observations, and learnings
+- Propose design changes or optimizations
+- Contribute firmware, software, and design improvements
+- Help characterize equipment performance
 
 ## Community
 
@@ -91,24 +91,24 @@ We actively welcome contributions. This project is in its early stages, and inpu
 
 ## Roadmap
 
-- [ ] Complete alpha stage (50-100 μm) for all equipment
+- [ ] Complete alpha stage (sub micron) for all equipment
 - [ ] Finalize process procedures and characterization data
 - [ ] Publish comprehensive build guides
 - [ ] Establish baseline performance metrics
-- [ ] Look at improvements to UV exposure system to allow for better mask alignment and etching (5-10 μm)
+- [ ] Improve lithography system resolution to 5-10 μm range
 
 ## Performance & Limitations
 
 OpenSilicon is targeting:
 
-- **Feature resolution**: 50-100 μm (alpha stage)
+- **Feature resolution**: sub micron (alpha stage)
 - **Use case**: Research, education, and experimentation
 - **Scale**: Small-batch processing
 - **Goal**: Accessible home lab fabrication, not production
 
 ## Safety
 
-⚠️ **This project involves significant hazards.** Home semiconductor fabrication includes:
+**This project involves significant hazards.** Home semiconductor fabrication includes:
 
 - High temperature operation (up to 1000°C+)
 - High voltage electrical systems
@@ -135,14 +135,7 @@ Use of OpenSilicon designs and instructions is at your own risk. The authors ass
 
 ## Support
 
-If you find OpenSilicon interesting:
-
-- Star this repository ⭐
-- Share your interests and expertise
-- Contribute to development
-- Help improve documentation
-
----
+If you find OpenSilicon interesting, star this repository, share your interests and expertise, contribute to development, and help improve documentation.
 
 **Have questions?** [Start a discussion](../../discussions) or [email us](mailto:parker.ellwanger@gmail.com).
 
