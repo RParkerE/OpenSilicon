@@ -95,7 +95,7 @@ We actively welcome contributions. This project is in its early stages, and inpu
 - [ ] Finalize process procedures and characterization data
 - [ ] Publish comprehensive build guides
 - [ ] Establish baseline performance metrics
-- [ ] Improve lithography system resolution to 5-10 μm range
+- [ ] Improve lithography system resolution to work with the Open PDKs at 130nm process
 
 ## Performance & Limitations
 
