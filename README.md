@@ -10,19 +10,29 @@ Open-source semiconductor fabrication for the home lab. Build and operate IC fab
 
 OpenSilicon brings semiconductor fabrication capabilities into the home lab. This project provides comprehensive documentation, designs, and software for building functional IC fabrication equipment for research, education, and experimentation.
 
-We are currently developing the alpha stage of the fabrication pipeline, targeting sub micron feature resolution across the complete process flow: spin coating, direct write lithography, oxidation, and physical vapor deposition (PVD).
+We are currently developing the alpha stage of the fabrication pipeline, targeting sub micron feature resolution across the complete process flow: spin coating, direct write lithography, metrology, oxidation, and physical vapor deposition (PVD).
 
 ## Status
 
 **Alpha Stage - Active Development**
 
-This is an early-stage project. All equipment designs and processes are works in progress and subject to change. Current development focus:
+This is an early-stage project. All equipment designs and processes are works in progress and subject to change. Current development is running two parallel tracks:
 
+**Metrology (FPM / R-FPM)**
+- Working prototype complete
+- Fourier Ptychographic Microscopy (FPM) and Reflective FPM (R-FPM) under active characterization
+
+**Direct Write Lithography (405nm)**
+- Laser control code and firmware complete
+- Actively working on motion circuitry and positioning firmware
+- Investigating voice coil actuators from blu-ray drive for fine positioning
+- Separate 3-axis alignment tool in development
+
+**Other Systems**
 - Spin coating system
     - Prototype full assembly complete
     - TODO: Look into web socket connectivity issues
     - TODO: Add a resist fill method
-- Direct write lithography system (405nm laser from blu-ray burner)
 - Oxidation furnace fabrication pipeline
 - PVD deposition system integration
 - Process characterization and documentation
@@ -49,7 +59,9 @@ Join us to help shape the project during these formative stages.
 | Equipment | Status | Notes |
 |-----------|--------|-------|
 | Spin Coater | In Progress | Open issues remain |
-| Direct Write Lithography | In Progress | 405nm laser system development |
+| FPM / R-FPM Metrology | Working Prototype | Active characterization |
+| Direct Write Lithography | In Progress | Laser firmware complete; positioning and alignment in development |
+| 3-Axis Alignment Tool | In Progress | Companion to lithography system |
 | Oxidation Furnace | In Progress | Initial build phase |
 | PVD Deposition System | In Progress | Initial build phase |
 
@@ -91,6 +103,8 @@ We actively welcome contributions. This project is in its early stages, and inpu
 
 ## Roadmap
 
+- [ ] Complete FPM/R-FPM metrology characterization
+- [ ] Complete lithography positioning system (voice coil + 3-axis alignment)
 - [ ] Complete alpha stage (sub micron) for all equipment
 - [ ] Finalize process procedures and characterization data
 - [ ] Publish comprehensive build guides
@@ -115,7 +129,7 @@ OpenSilicon is targeting:
 - UV radiation exposure
 - Chemical hazards
 
-Users are responsible for understanding and mitigating these risks. Always follow safety procedures and never operate equipment unsupervised. 
+Users are responsible for understanding and mitigating these risks. Always follow safety procedures and never operate equipment unsupervised.
 
 ## Building from Source
 
