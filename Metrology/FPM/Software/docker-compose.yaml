@@ -1,0 +1,62 @@
+version: '3.8'
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: fpm_api
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    environment:
+      - FPM_MODE=transmission
+      - FPM_SERVER__LOG_LEVEL=INFO
+      - FPM_SERVER__DATA_ROOT=/app/data
+      - FPM_OPTICAL__WAVELENGTH_NM=395
+      - FPM_OPTICAL__NA_OBJECTIVE=0.25
+    restart: unless-stopped
+    networks:
+      - fpm_network
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8000/health', timeout=5).raise_for_status()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+  
+  dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: fpm_dashboard
+    command: streamlit run visualize.py --server.port 8501 --server.address 0.0.0.0 --server.headless true
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - FPM_SERVER__DATA_ROOT=/app/data
+    restart: unless-stopped
+    networks:
+      - fpm_network
+    depends_on:
+      - api
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+networks:
+  fpm_network:
+    driver: bridge
+
+volumes:
+  data:
+    driver: local
+  logs:
+    driver: local
