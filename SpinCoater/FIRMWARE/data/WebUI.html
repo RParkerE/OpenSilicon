@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>OpenSilicon Spin Coater WebUI</title>
+
+    <!-- htmx 1.9.12 + WebSocket extension (ws is a v1 extension) -->
+    <script src="/htmx.min.js"></script>
+    <script src="/ws.js"></script>
+
+    <style>
+        :root {
+            --bg: #9ea1a3;
+            --card: #dadae6;
+            --text: #1a1a1a;
+            --accent: #2563eb;
+            --danger: #dc2626;
+            --warn: #f59e0b;
+            --success: #16a34a;
+            --radius: 8px;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            max-width: 960px;
+            margin: 0 auto;
+            padding: 1rem;
+        }
+        .connection-dot {
+            display: inline-block;
+            width: 10px; height: 10px;
+            border-radius: 50%;
+            background: #9ca3af;
+            margin-right: 0.5rem;
+        }
+        .connection-dot.connected { background: var(--success); }
+        .connection-dot.disconnected { background: var(--danger); }
+        nav {
+            display: flex;
+            gap: 0.5rem;
+            margin: 1rem 0;
+            flex-wrap: wrap;
+        }
+        nav button {
+            padding: 0.5rem 1rem;
+            border: 1px solid #d1d5db;
+            background: var(--card);
+            border-radius: var(--radius);
+            cursor: pointer;
+            font-weight: 500;
+        }
+        nav button.active {
+            background: var(--accent);
+            color: white;
+            border-color: var(--accent);
+        }
+        .page {
+            display: none;
+            animation: fadeIn 0.2s ease;
+        }
+        .page.active { display: block; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+        .card {
+            background: var(--card);
+            padding: 1rem;
+            border-radius: var(--radius);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            margin-bottom: 1rem;
+        }
+        .telemetry-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 0.5rem;
+        }
+        .telemetry-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 0.5rem;
+            border: 1px solid #e5e7eb;
+            border-radius: var(--radius);
+        }
+        .btn {
+            padding: 0.5rem 1rem;
+            border: none;
+            border-radius: var(--radius);
+            cursor: pointer;
+            font-weight: 500;
+            margin: 0.25rem;
+        }
+        .btn-primary { background: var(--accent); color: white; }
+        .btn-danger { background: var(--danger); color: white; }
+        .btn-warn { background: var(--warn); color: black; }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .toast {
+            position: fixed;
+            top: 1rem;
+            right: 1rem;
+            background: #1e293b;
+            color: white;
+            padding: 0.75rem 1rem;
+            border-radius: var(--radius);
+            opacity: 0;
+            transition: opacity 0.3s;
+            pointer-events: none;
+            z-index: 1000;
+        }
+        .toast.show { opacity: 1; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 0.5rem; text-align: left; border-bottom: 1px solid #e5e7eb; }
+        input[type="number"] { width: 100%; padding: 0.3rem; }
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #e5e7eb;
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 0.5rem 0;
+        }
+        .progress-fill {
+            height: 100%;
+            background: var(--accent);
+            transition: width 0.2s;
+        }
+    </style>
+</head>
+<body hx-ext="ws" ws-connect="/ws">
+    <!-- Connection indicator -->
+    <div style="display:flex; align-items:center;">
+        <span id="conn-dot" class="connection-dot disconnected"></span>
+        <span id="conn-label">Disconnected</span>
+    </div>
+
+    <!-- Navigation Tabs -->
+    <nav id="main-nav">
+        <button data-page="status" class="active">Status</button>
+        <button data-page="recipes">Recipes</button>
+        <button data-page="process">Active Process</button>
+        <button data-page="fault">Fault</button>
+    </nav>
+
+    <!-- ========== PAGES ========== -->
+    <main>
+        <!-- Status Page -->
+        <section id="page-status" class="page active">
+            <div class="card">
+                <h2>Machine State: <span id="state-display">Idle</span></h2>
+                <div class="telemetry-grid">
+                    <div class="telemetry-item"><span>Actual RPM</span> <strong id="actual-rpm">0</strong></div>
+                    <div class="telemetry-item"><span>Target RPM</span> <strong id="target-rpm">0</strong></div>
+                    <div class="telemetry-item"><span>Z Position</span> <strong id="z-pos">0.0</strong> mm</div>
+                    <div class="telemetry-item"><span>Dispensed</span> <strong id="dispensed-vol">0.0</strong> mL</div>
+                </div>
+                <div style="margin-top:1rem;">
+                    <button id="btn-start" class="btn btn-primary" ws-send hx-trigger="click" hx-vals='{"cmd":"start"}'>Start</button>
+                    <button id="btn-pause" class="btn btn-warn" ws-send hx-trigger="click" hx-vals='{"cmd":"pause"}' disabled>Pause</button>
+                    <button id="btn-resume" class="btn btn-primary" ws-send hx-trigger="click" hx-vals='{"cmd":"resume"}' disabled>Resume</button>
+                    <button id="btn-stop" class="btn btn-danger" ws-send hx-trigger="click" hx-vals='{"cmd":"stop"}' disabled>Stop</button>
+                </div>
+            </div>
+
+            <!-- Manual jog / priming (intended for setup while Idle) -->
+            <div class="card">
+                <h3>Manual Controls</h3>
+                <div class="telemetry-grid">
+                    <div class="telemetry-item" style="flex-direction:column; align-items:stretch; gap:0.5rem;">
+                        <label for="manual-z">Z Height (mm)</label>
+                        <input type="number" id="manual-z" value="20" step="0.5" min="0" />
+                        <button class="btn btn-primary" onclick="manualMoveZ()">Move Z</button>
+                    </div>
+                    <div class="telemetry-item" style="flex-direction:column; align-items:stretch; gap:0.5rem;">
+                        <label for="manual-vol">Pump Volume (mL)</label>
+                        <input type="number" id="manual-vol" value="1.0" step="0.1" min="0" />
+                        <div>
+                            <button class="btn" onclick="manualAspirate()">Aspirate</button>
+                            <button class="btn btn-primary" onclick="manualDispense()">Dispense</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Recipes Page -->
+        <section id="page-recipes" class="page">
+            <div class="card">
+                <h3>Stored Recipes</h3>
+                <div id="recipe-list">Loading...</div>
+                <button id="btn-refresh-list" class="btn" ws-send hx-trigger="click" hx-vals='{"cmd":"get_recipes_list"}'>Refresh List</button>
+            </div>
+            <div class="card">
+                <h3>Recipe Editor</h3>
+                <input type="text" id="recipe-name" placeholder="Recipe Name" style="width:100%; padding:0.5rem; margin-bottom:0.5rem;" />
+                <div style="overflow-x:auto;">
+                <table id="recipe-steps-table">
+                    <thead>
+                        <tr>
+                            <th>Step</th>
+                            <th>Prime (mL)</th>
+                            <th>Dispense (mL)</th>
+                            <th>Disp H (mm)</th>
+                            <th>Spin H (mm)</th>
+                            <th>Speed (RPM)</th>
+                            <th>Ramp (s)</th>
+                            <th>Hold (s)</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr class="step-row">
+                            <td>1</td>
+                            <td><input type="number" value="0" step="0.1" min="0" class="prime" /></td>
+                            <td><input type="number" value="2.5" step="0.1" min="0" class="dispense" /></td>
+                            <td><input type="number" value="2" step="0.1" min="0" class="disph" /></td>
+                            <td><input type="number" value="20" step="0.1" min="0" class="spinh" /></td>
+                            <td><input type="number" value="3000" min="0" class="speed" /></td>
+                            <td><input type="number" value="5" step="0.1" min="0" class="ramp" /></td>
+                            <td><input type="number" value="30" step="0.1" min="0" class="hold" /></td>
+                            <td><button class="btn btn-danger remove-step">✕</button></td>
+                        </tr>
+                    </tbody>
+                </table>
+                </div>
+                <button id="btn-add-step" class="btn">Add Step</button>
+                <div style="margin-top:1rem;">
+                    <button id="btn-load-to-device" class="btn btn-primary" onclick="sendSetRecipe()">Load to Device</button>
+                    <button id="btn-save-on-device" class="btn" ws-send hx-trigger="click" hx-vals='{"cmd":"save_recipe"}'>Save on Device</button>
+                    <button id="btn-start-recipe" class="btn btn-primary" onclick="setAndStart()">Start with this Recipe</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Active Process Page -->
+        <section id="page-process" class="page">
+            <div class="card">
+                <h3>Current Step: <span id="current-step">-</span> / <span id="total-steps">-</span></h3>
+                <div class="progress-bar"><div id="step-progress" class="progress-fill" style="width:0%"></div></div>
+                <p>Step Progress: <span id="step-progress-text">0</span>%</p>
+                <div class="telemetry-grid">
+                    <div class="telemetry-item"><span>Actual RPM</span> <strong id="proc-actual-rpm">0</strong></div>
+                    <div class="telemetry-item"><span>Target RPM</span> <strong id="proc-target-rpm">0</strong></div>
+                </div>
+                <div style="margin-top:1rem;">
+                    <button id="btn-pause-proc" class="btn btn-warn" ws-send hx-trigger="click" hx-vals='{"cmd":"pause"}'>Pause</button>
+                    <button id="btn-stop-proc" class="btn btn-danger" ws-send hx-trigger="click" hx-vals='{"cmd":"stop"}'>Emergency Stop</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Fault Page -->
+        <section id="page-fault" class="page">
+            <div class="card" style="border:2px solid var(--danger);">
+                <h2 style="color:var(--danger);">⚠ Fault</h2>
+                <p><strong>Code:</strong> <span id="fault-code">-</span></p>
+                <p><strong>Description:</strong> <span id="fault-desc">-</span></p>
+                <button id="btn-reset" class="btn btn-danger" ws-send hx-trigger="click" hx-vals='{"cmd":"reset"}'>Reset</button>
+            </div>
+        </section>
+    </main>
+
+    <!-- Toast notifications -->
+    <div id="toast" class="toast"></div>
+
+    <!-- ========== APPLICATION LOGIC ========== -->
+    <script>
+        // ----- WebSocket helpers -----
+        let wsSend = null;
+
+        function sendCommand(payload) {
+            if (!wsSend) {
+                showToast('Not connected');
+                return false;
+            }
+            wsSend(typeof payload === 'string' ? payload : JSON.stringify(payload));
+            return true;
+        }
+
+        function showToast(message, duration = 3000) {
+            const toast = document.getElementById('toast');
+            toast.textContent = message;
+            toast.classList.add('show');
+            setTimeout(() => toast.classList.remove('show'), duration);
+        }
+
+        function updateConnectionStatus(connected) {
+            const dot = document.getElementById('conn-dot');
+            const label = document.getElementById('conn-label');
+            if (connected) {
+                dot.className = 'connection-dot connected';
+                label.textContent = 'Connected';
+            } else {
+                dot.className = 'connection-dot disconnected';
+                label.textContent = 'Disconnected';
+            }
+        }
+
+        // Listen to htmx WebSocket events
+        document.body.addEventListener('htmx:wsOpen', (evt) => {
+            wsSend = (message) => evt.detail.socketWrapper.send(message);
+            updateConnectionStatus(true);
+            sendCommand({ cmd: 'get_recipes_list' });
+            sendCommand({ cmd: 'get_telemetry' });
+            showToast('Connected');
+        });
+
+        document.body.addEventListener('htmx:wsClose', () => {
+            wsSend = null;
+            updateConnectionStatus(false);
+            showToast('Connection lost, reconnecting...');
+        });
+
+        // Process incoming JSON messages
+        document.body.addEventListener('htmx:wsAfterMessage', (evt) => {
+            let msg;
+            try {
+                msg = JSON.parse(evt.detail.message);
+            } catch (e) {
+                console.warn('Non-JSON message received', evt.detail.message);
+                return;
+            }
+
+            // Telemetry
+            if (msg.type === 'telemetry' && msg.data) {
+                updateTelemetryUI(msg.data);
+                handleStateBasedNavigation(msg.data.state);
+                updateButtonStates(msg.data.state);
+            }
+
+            // Event
+            else if (msg.type === 'event') {
+                handleEvent(msg);
+            }
+
+            // Recipe list
+            else if (msg.type === 'recipes_list' || Array.isArray(msg.names)) {
+                renderRecipeList(msg.names || msg.recipes || []);
+            }
+
+            // Single recipe (response to get_recipe, load_recipe, or set_recipe)
+            else if (msg.name && msg.steps) {
+                renderCurrentRecipe(msg);
+            }
+
+            // Generic acknowledgment / fallback
+            else if (msg.status === 'ok') {
+                showToast('Command accepted');
+            }
+        });
+
+        // ----- UI update functions -----
+        function updateTelemetryUI(data) {
+            document.getElementById('state-display').textContent = data.state;
+            document.getElementById('actual-rpm').textContent = data.actualSpinSpeed_rpm;
+            document.getElementById('target-rpm').textContent = data.targetSpinSpeed_rpm;
+            document.getElementById('z-pos').textContent = data.zPosition_mm;
+            document.getElementById('dispensed-vol').textContent = data.dispensedVolume_ml;
+
+            // Process page mirrors
+            document.getElementById('proc-actual-rpm').textContent = data.actualSpinSpeed_rpm;
+            document.getElementById('proc-target-rpm').textContent = data.targetSpinSpeed_rpm;
+            document.getElementById('current-step').textContent = data.currentStepIndex;
+            document.getElementById('total-steps').textContent = data.totalSteps;
+            document.getElementById('step-progress-text').textContent = data.stepProgress_percent;
+            document.getElementById('step-progress').style.width = data.stepProgress_percent + '%';
+
+            // Fault info
+            if (data.faultCode && data.state === 'FAULT') {
+                document.getElementById('fault-code').textContent = data.faultCode;
+                document.getElementById('fault-desc').textContent = data.faultDescription;
+            }
+        }
+
+        function handleEvent(msg) {
+            showToast(`Event: ${msg.event} ${msg.param ? '('+msg.param+')' : ''}`);
+            // Auto‑navigate to fault page if needed
+            if (msg.event === 'FAULT_DETECTED') {
+                showPage('fault');
+            }
+        }
+
+        function updateButtonStates(state) {
+            const isIdle = state === 'IDLE';
+            const isRunning = state === 'RUNNING';
+            const isPaused = state === 'PAUSED';
+            const isFault = state === 'FAULT';
+
+            // Status page buttons
+            document.getElementById('btn-start').disabled = !isIdle;
+            document.getElementById('btn-pause').disabled = !isRunning;
+            document.getElementById('btn-resume').disabled = !isPaused;
+            document.getElementById('btn-stop').disabled = !(isRunning || isPaused);
+
+            // Process page buttons (same state logic)
+            document.getElementById('btn-pause-proc').disabled = !isRunning;
+            document.getElementById('btn-stop-proc').disabled = !(isRunning || isPaused);
+
+            // Reset button enabled only in fault
+            document.getElementById('btn-reset').disabled = !isFault;
+        }
+
+        function handleStateBasedNavigation(state) {
+            if (state === 'FAULT') {
+                showPage('fault');
+            }
+	    if (state === 'RUNNING') {
+		showPage('status');
+	    }
+        }
+
+        // ----- Recipe rendering -----
+        function renderRecipeList(names) {
+            const container = document.getElementById('recipe-list');
+            if (!names.length) {
+                container.innerHTML = '<p>No recipes stored</p>';
+                return;
+            }
+            let html = '<ul style="list-style:none; padding:0;">';
+            names.forEach(name => {
+                html += `<li style="margin-bottom:0.5rem;">
+                    <button class="btn" onclick="loadRecipe('${name.replace(/'/g, "\\'")}')">Load: ${name}</button>
+                    <button class="btn btn-danger" onclick="deleteRecipe('${name.replace(/'/g, "\\'")}')">Delete</button>
+                </li>`;
+            });
+            html += '</ul>';
+            container.innerHTML = html;
+        }
+
+        function renderCurrentRecipe(recipe) {
+            document.getElementById('recipe-name').value = recipe.name || '';
+            const tbody = document.querySelector('#recipe-steps-table tbody');
+            tbody.innerHTML = '';
+            (recipe.steps || []).forEach((step, idx) => {
+                addStepRow(step.stepIndex || idx+1, step);
+            });
+            showToast('Recipe loaded');
+        }
+
+        // ----- Step table helpers -----
+        function addStepRow(index, data = {}) {
+            const tbody = document.querySelector('#recipe-steps-table tbody');
+            const row = document.createElement('tr');
+            row.className = 'step-row';
+            row.innerHTML = `
+                <td>${index}</td>
+                <td><input type="number" value="${data.primeVolume_ml || 0}" step="0.1" min="0" class="prime" /></td>
+                <td><input type="number" value="${data.dispenseVolume_ml || 0}" step="0.1" min="0" class="dispense" /></td>
+                <td><input type="number" value="${data.dispenseHeight_mm || 0}" step="0.1" min="0" class="disph" /></td>
+                <td><input type="number" value="${data.spinHeight_mm || 0}" step="0.1" min="0" class="spinh" /></td>
+                <td><input type="number" value="${data.spinSpeed_rpm || 0}" min="0" class="speed" /></td>
+                <td><input type="number" value="${data.rampTime_s || 0}" step="0.1" min="0" class="ramp" /></td>
+                <td><input type="number" value="${data.holdTime_s || 0}" step="0.1" min="0" class="hold" /></td>
+                <td><button class="btn btn-danger remove-step">✕</button></td>
+            `;
+            tbody.appendChild(row);
+        }
+
+        function collectRecipeFromForm() {
+            const name = document.getElementById('recipe-name').value.trim();
+            const steps = [];
+            document.querySelectorAll('#recipe-steps-table tbody .step-row').forEach((row, i) => {
+                steps.push({
+                    stepIndex: i + 1,
+                    primeVolume_ml: parseFloat(row.querySelector('.prime').value) || 0,
+                    dispenseVolume_ml: parseFloat(row.querySelector('.dispense').value) || 0,
+                    dispenseHeight_mm: parseFloat(row.querySelector('.disph').value) || 0,
+                    spinHeight_mm: parseFloat(row.querySelector('.spinh').value) || 0,
+                    spinSpeed_rpm: parseInt(row.querySelector('.speed').value) || 0,
+                    rampTime_s: parseFloat(row.querySelector('.ramp').value) || 0,
+                    holdTime_s: parseFloat(row.querySelector('.hold').value) || 0
+                });
+            });
+            return { name, steps };
+        }
+
+        function sendSetRecipe() {
+            const recipe = collectRecipeFromForm();
+            if (!recipe.name) { showToast('Please enter a recipe name'); return; }
+            sendCommand({ cmd: 'set_recipe', recipe });
+        }
+
+        function setAndStart() {
+            const recipe = collectRecipeFromForm();
+            if (!recipe.name) { showToast('Please enter a recipe name'); return; }
+            sendCommand({ cmd: 'set_recipe', recipe });
+            setTimeout(() => sendCommand({ cmd: 'start' }), 300);
+        }
+
+        function loadRecipe(name) {
+            sendCommand({ cmd: 'load_recipe', name });
+        }
+
+        // ----- Manual controls -----
+        function manualMoveZ() {
+            sendCommand({ cmd: 'move_z', param: parseFloat(document.getElementById('manual-z').value) || 0 });
+        }
+
+        function manualAspirate() {
+            sendCommand({ cmd: 'aspirate', param: parseFloat(document.getElementById('manual-vol').value) || 0 });
+        }
+
+        function manualDispense() {
+            sendCommand({ cmd: 'dispense', param: parseFloat(document.getElementById('manual-vol').value) || 0 });
+        }
+
+        function deleteRecipe(name) {
+            if (confirm(`Delete recipe "${name}"?`)) {
+                sendCommand({ cmd: 'delete_recipe', name });
+            }
+        }
+
+        // ----- Page navigation -----
+        function showPage(pageId) {
+            document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+            document.getElementById('page-' + pageId).classList.add('active');
+            document.querySelectorAll('nav button').forEach(b => {
+                b.classList.toggle('active', b.dataset.page === pageId);
+            });
+        }
+
+        // Wire nav buttons
+        document.querySelectorAll('nav button').forEach(btn => {
+            btn.addEventListener('click', () => showPage(btn.dataset.page));
+        });
+
+        // Add / remove step handlers
+        document.getElementById('btn-add-step').addEventListener('click', () => {
+            const rows = document.querySelectorAll('#recipe-steps-table tbody .step-row');
+            addStepRow(rows.length + 1);
+        });
+
+        document.getElementById('recipe-steps-table').addEventListener('click', (e) => {
+            if (e.target.classList.contains('remove-step')) {
+                e.target.closest('tr').remove();
+                // Re-index
+                document.querySelectorAll('#recipe-steps-table tbody .step-row').forEach((r, i) => {
+                    r.children[0].textContent = i + 1;
+                });
+            }
+        });
+    </script>
+</body>
+</html>
+
